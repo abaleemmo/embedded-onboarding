@@ -176,117 +176,143 @@ functions
  *         the configuration information for the specified GPIO peripheral.
  * @retval None
  */
-void HAL_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *GPIO_Init) {
-  uint32_t position = 0x00u;
-  uint32_t iocurrent;
-  uint32_t temp;
+void My_GPIO_Init(GPIO_TypeDef *GPIOx, GPIO_InitTypeDef *GPIO_Init) {
+    // couldn't use #define but like the idea's the same
+    uint32_t NUMPINS = 16;
+    // counter to move through the pins
+    uint32_t current_pin = 0;
+    // 1 if this pin should be configured, 0 if not
+    uint32_t pin_bit;
+    // temp so that you're not writing directly to the register
+    uint32_t temp;
 
-  /* Check the parameters */
-  assert_param(IS_GPIO_ALL_INSTANCE(GPIOx));
-  assert_param(IS_GPIO_PIN(GPIO_Init->Pin));
-  assert_param(IS_GPIO_MODE(GPIO_Init->Mode));
+    // checking the parameters to see if they are valid and not made up
+    assert_param(IS_GPIO_ALL_INSTANCE(GPIOx));
+    assert_param(IS_GPIO_PIN(GPIO_Init->Pin));
+    assert_param(IS_GPIO_MODE(GPIO_Init->Mode));
 
-  /* Configure the port pins */
-  while (((GPIO_Init->Pin) >> position) != 0x00u) {
-    /* Get current io position */
-    iocurrent = (GPIO_Init->Pin) & (1uL << position);
+    uint32_t full_pin = GPIO_Init->Pin;
 
-    if (iocurrent != 0x00u) {
-      /*--------------------- GPIO Mode Configuration ------------------------*/
-      /* In case of Output or Alternate function mode selection */
-      if (((GPIO_Init->Mode & GPIO_MODE) == MODE_OUTPUT) ||
-          ((GPIO_Init->Mode & GPIO_MODE) == MODE_AF)) {
-        /* Check the Speed parameter */
-        assert_param(IS_GPIO_SPEED(GPIO_Init->Speed));
-        /* Configure the IO Speed */
-        temp = GPIOx->OSPEEDR;
-        temp &= ~(GPIO_OSPEEDER_OSPEEDR0 << (position * 2u));
-        temp |= (GPIO_Init->Speed << (position * 2u));
-        GPIOx->OSPEEDR = temp;
+    // get the parts of mode out
+    uint32_t mode        = GPIO_Init->Mode & GPIO_MODE;                         // 0 input, 1 output, 2 AF, 3 analog
+    uint32_t output_type = (GPIO_Init->Mode & OUTPUT_TYPE) >> OUTPUT_TYPE_Pos;  // 0 push-pull, 1 open-drain
 
-        /* Configure the IO Output Type */
-        temp = GPIOx->OTYPER;
-        temp &= ~(GPIO_OTYPER_OT_0 << position);
-        temp |=
-            (((GPIO_Init->Mode & OUTPUT_TYPE) >> OUTPUT_TYPE_Pos) << position);
-        GPIOx->OTYPER = temp;
-      }
-
-      if ((GPIO_Init->Mode & GPIO_MODE) != MODE_ANALOG) {
-        /* Check the Pull parameter */
-        assert_param(IS_GPIO_PULL(GPIO_Init->Pull));
-
-        /* Activate the Pull-up or Pull down resistor for the current IO */
-        temp = GPIOx->PUPDR;
-        temp &= ~(GPIO_PUPDR_PUPDR0 << (position * 2u));
-        temp |= ((GPIO_Init->Pull) << (position * 2u));
-        GPIOx->PUPDR = temp;
-      }
-
-      /* In case of Alternate function mode selection */
-      if ((GPIO_Init->Mode & GPIO_MODE) == MODE_AF) {
-        /* Check the Alternate function parameters */
-        assert_param(IS_GPIO_AF_INSTANCE(GPIOx));
-        assert_param(IS_GPIO_AF(GPIO_Init->Alternate));
-
-        /* Configure Alternate function mapped with the current IO */
-        temp = GPIOx->AFR[position >> 3u];
-        temp &= ~(0xFu << ((position & 0x07u) * 4u));
-        temp |= ((GPIO_Init->Alternate) << ((position & 0x07u) * 4u));
-        GPIOx->AFR[position >> 3u] = temp;
-      }
-
-      /* Configure IO Direction mode (Input, Output, Alternate or Analog) */
-      temp = GPIOx->MODER;
-      temp &= ~(GPIO_MODER_MODER0 << (position * 2u));
-      temp |= ((GPIO_Init->Mode & GPIO_MODE) << (position * 2u));
-      GPIOx->MODER = temp;
-
-      /*--------------------- EXTI Mode Configuration ------------------------*/
-      /* Configure the External Interrupt or event for the current IO */
-      if ((GPIO_Init->Mode & EXTI_MODE) != 0x00u) {
-        /* Enable SYSCFG Clock */
-        __HAL_RCC_SYSCFG_CLK_ENABLE();
-
-        temp = SYSCFG->EXTICR[position >> 2u];
-        temp &= ~(0x0FuL << (4u * (position & 0x03u)));
-        temp |= (GPIO_GET_INDEX(GPIOx) << (4u * (position & 0x03u)));
-        SYSCFG->EXTICR[position >> 2u] = temp;
-
-        /* Clear Rising Falling edge configuration */
-        temp = EXTI->RTSR;
-        temp &= ~(iocurrent);
-        if ((GPIO_Init->Mode & TRIGGER_RISING) != 0x00u) {
-          temp |= iocurrent;
-        }
-        EXTI->RTSR = temp;
-
-        temp = EXTI->FTSR;
-        temp &= ~(iocurrent);
-        if ((GPIO_Init->Mode & TRIGGER_FALLING) != 0x00u) {
-          temp |= iocurrent;
-        }
-        EXTI->FTSR = temp;
-
-        /* Clear EXTI line configuration */
-        temp = EXTI->EMR;
-        temp &= ~(iocurrent);
-        if ((GPIO_Init->Mode & EXTI_EVT) != 0x00u) {
-          temp |= iocurrent;
-        }
-        EXTI->EMR = temp;
-
-        temp = EXTI->IMR;
-        temp &= ~(iocurrent);
-        if ((GPIO_Init->Mode & EXTI_IT) != 0x00u) {
-          temp |= iocurrent;
-        }
-        EXTI->IMR = temp;
-      }
+    // split full_pin into its 16 bits, one per array slot.
+    uint32_t pins[NUMPINS];
+    for (int i = 0; i < NUMPINS; i++) {
+        pins[i] = full_pin % 2;     
+        full_pin = full_pin / 2;   
     }
 
-    position++;
-  }
+    // loop through the 16 pins
+    while (current_pin < NUMPINS) {
+        pin_bit = pins[current_pin];
+
+        // if the pin shouldn't be skipped then do stuff
+        if (pin_bit != 0) {
+
+            // where this pin's field starts in registers with 2 bits per pin
+            uint32_t two_bit_pos = current_pin * 2;
+
+            // speed and output type: only for output or alternate function 
+            if (mode == MODE_OUTPUT || mode == MODE_AF) {
+                assert_param(IS_GPIO_SPEED(GPIO_Init->Speed));
+
+                temp = GPIOx->OSPEEDR;
+                temp &= ~(3u << two_bit_pos);                
+                temp |= (GPIO_Init->Speed << two_bit_pos);   
+                GPIOx->OSPEEDR = temp;
+
+                temp = GPIOx->OTYPER;
+                temp &= ~(1u << current_pin);               
+                temp |= (output_type << current_pin);
+                GPIOx->OTYPER = temp;
+            }
+
+            // pull-up / pull-down: not in analog mode 
+            if (mode != MODE_ANALOG) {
+                assert_param(IS_GPIO_PULL(GPIO_Init->Pull));
+
+                temp = GPIOx->PUPDR;
+                temp &= ~(3u << two_bit_pos);
+                temp |= (GPIO_Init->Pull << two_bit_pos);
+                GPIOx->PUPDR = temp;
+            }
+
+            // alternate function: 4 bits per pin, 8 pins per register
+            if (mode == MODE_AF) {
+                assert_param(IS_GPIO_AF_INSTANCE(GPIOx));
+                assert_param(IS_GPIO_AF(GPIO_Init->Alternate));
+
+                uint32_t which_reg = current_pin / 8;         
+                uint32_t af_pos    = (current_pin % 8) * 4;   
+
+                temp = GPIOx->AFR[which_reg];
+                temp &= ~(15u << af_pos);                    
+                temp |= (GPIO_Init->Alternate << af_pos);
+                GPIOx->AFR[which_reg] = temp;
+            }
+
+            // the mode itself, done last so the pin is ready before it switches 
+            temp = GPIOx->MODER;
+            temp &= ~(3u << two_bit_pos);
+            temp |= (mode << two_bit_pos);
+            GPIOx->MODER = temp;
+
+            // external interrupt
+            if ((GPIO_Init->Mode & EXTI_MODE) != 0) {
+
+                uint32_t pin_mask = 1u << current_pin;
+
+                // clock on 
+                __HAL_RCC_SYSCFG_CLK_ENABLE();
+
+                // tell this EXTI line which port to listen to
+                uint32_t which_reg = current_pin / 4;         // 4 pins per EXTICR register
+                uint32_t exti_pos  = (current_pin % 4) * 4;   // 4 bits per pin
+
+                temp = SYSCFG->EXTICR[which_reg];
+                temp &= ~(15u << exti_pos);
+                temp |= (GPIO_GET_INDEX(GPIOx) << exti_pos);
+                SYSCFG->EXTICR[which_reg] = temp;
+
+                // rising edge trigger: clear, then set if asked for
+                temp = EXTI->RTSR;
+                temp &= ~pin_mask;
+                if ((GPIO_Init->Mode & TRIGGER_RISING) != 0) {
+                    temp |= pin_mask;
+                }
+                EXTI->RTSR = temp;
+
+                // falling edge trigger
+                temp = EXTI->FTSR;
+                temp &= ~pin_mask;
+                if ((GPIO_Init->Mode & TRIGGER_FALLING) != 0) {
+                    temp |= pin_mask;
+                }
+                EXTI->FTSR = temp;
+
+                // event
+                temp = EXTI->EMR;
+                temp &= ~pin_mask;
+                if ((GPIO_Init->Mode & EXTI_EVT) != 0) {
+                    temp |= pin_mask;
+                }
+                EXTI->EMR = temp;
+
+                // interrupt
+                temp = EXTI->IMR;
+                temp &= ~pin_mask;
+                if ((GPIO_Init->Mode & EXTI_IT) != 0) {
+                    temp |= pin_mask;
+                }
+                EXTI->IMR = temp;
+            }
+        }
+
+        // increment the loop
+        current_pin++;
+    }
 }
 
 /**
@@ -408,17 +434,22 @@ GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin) {
  *            @arg GPIO_PIN_SET: to set the port pin
  * @retval None
  */
-void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin,
-                       GPIO_PinState PinState) {
-  /* Check the parameters */
-  assert_param(IS_GPIO_PIN(GPIO_Pin));
-  assert_param(IS_GPIO_PIN_ACTION(PinState));
+void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, PIO_PinState PinState) {
 
-  if (PinState != GPIO_PIN_RESET) {
-    GPIOx->BSRR = (uint32_t)GPIO_Pin;
-  } else {
-    GPIOx->BRR = (uint32_t)GPIO_Pin;
-  }
+    // not a whole lot I could rewrite here
+
+    // checking parameters to see if they're not made up/nonexistent
+    assert_param(IS_GPIO_PIN(GPIO_Pin));
+    assert_param(IS_GPIO_PIN_ACTION(PinState));
+
+    // figuring out whether the pin is high or low
+    if (PinState = GPIO_PIN_RESET) {
+        // low gets written into BRR
+        GPIOx->BRR= (uint32_t)GPIO_Pin;
+    } else {
+        // high gets written into BSRR
+        GPIOx->BSRR = (uint32_t)GPIO_Pin;
+    }
 }
 
 /**
@@ -429,16 +460,16 @@ void HAL_GPIO_WritePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin,
  * @retval None
  */
 void HAL_GPIO_TogglePin(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin) {
-  uint32_t odr;
-
-  /* Check the parameters */
+//   check the parameters
   assert_param(IS_GPIO_PIN(GPIO_Pin));
 
-  /* get current Output Data Register value */
-  odr = GPIOx->ODR;
+    // get current Output Data Register value to figure out what the 
+  uint32_t output_data_register = GPIOx->ODR;
 
-  /* Set selected pins that were at low level, and reset ones that were high */
-  GPIOx->BSRR = ((odr & GPIO_Pin) << GPIO_NUMBER) | (~odr & GPIO_Pin);
+    // Set selected pins that were at low level, and reset ones that were high */
+  GPIOx->BSRR = ((output_data_register & GPIO_Pin) << GPIO_NUMBER) | (~output_data_register & GPIO_Pin);
+    // (output_data_register & GPIO_PIN) << GPIO_NUMBER gives you the bottom half of the pins, so the ones that are set to high
+    // (~output_data_register & GPIO_Pin) flips all the bits in output_data_register so the low pins are 1s now, and so it sets the low pins high
 }
 
 /**

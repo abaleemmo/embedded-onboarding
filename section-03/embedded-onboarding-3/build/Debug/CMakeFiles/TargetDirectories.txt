@@ -1,0 +1,6 @@
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/CMakeFiles/embedded-onboarding-3.dir
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/CMakeFiles/edit_cache.dir
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/CMakeFiles/rebuild_cache.dir
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/cmake/stm32cubemx/CMakeFiles/STM32_Drivers.dir
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/cmake/stm32cubemx/CMakeFiles/edit_cache.dir
+/Users/abdul-aleem/Desktop/embedded-onboarding-3/build/Debug/cmake/stm32cubemx/CMakeFiles/rebuild_cache.dir
